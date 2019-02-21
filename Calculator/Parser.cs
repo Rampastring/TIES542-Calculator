@@ -27,7 +27,7 @@ namespace Calculator
             tokens = l.GetTokens();
         }
 
-        public void GetExpr()
+        public Node GetExpr()
         {
             switch (GetTokenType())
             {
@@ -36,12 +36,12 @@ namespace Calculator
                     VerifyToken(Token.EqualitySign, GetTokenType(2));
                     LetNode letNode = new LetNode(currentNode, (string)tokens[tokenIndex + 1].Value);
                     ConsumeTokens(2);
-                    AddNode(letNode);
+                    //AddNode(letNode);
                     GetExpr();
                     VerifyToken(Token.In, GetTokenType());
                     ConsumeTokens(1);
                     GetExpr();
-                    break;
+                    return letNode;
                 case Token.Constant:
                     // get factor and term
                     //ConstantNode cNode = new ConstantNode(currentNode, (int)GetValue());
@@ -57,6 +57,88 @@ namespace Calculator
                 case Token.OpeningParanthesis:
                     throw new NotImplementedException();
             }
+
+            throw new NotImplementedException();
+        }
+
+        private void GetArith()
+        {
+            Node left = GetSubArith();
+            switch (GetTokenType())
+            {
+
+            }
+        }
+
+        private Node GetSubArith()
+        {
+            Node left;
+
+            if (GetRemainingTokenCount() == 1)
+            {
+                return EvalConstOrVariable();
+            }
+
+            switch (GetTokenType())
+            {
+                case Token.OpeningParanthesis:
+                    left = GetParenthesesNode();
+                    break;
+                case Token.Constant:
+                case Token.Variable:
+                    left = EvalConstOrVariable();
+                    break;
+            }
+
+
+            Node center;
+
+            switch (GetTokenType())
+            {
+                case Token.Plus:
+                    center = new OperatorNode(Operator.Sum);
+                    break;
+                case Token.Minus:
+                    center = new OperatorNode(Operator.Minus);
+                    break;
+                case Token.Star:
+                    center = new OperatorNode(Operator.Star);
+                    break;
+                case Token.Slash:
+                    center = new OperatorNode(Operator.Slash);
+                    break;
+            }
+
+            throw new NotImplementedException();
+        }
+
+        private Node EvalConstOrVariable()
+        {
+            switch (GetTokenType())
+            {
+                case Token.Constant:
+                    var cNode = new ConstantNode(null, (int)GetValue());
+                    ConsumeTokens(1);
+                    return cNode;
+                case Token.Variable:
+                    var varRefNode = new VariableReferenceNode(null, env, (string)GetValue());
+                    ConsumeTokens(1);
+                    return varRefNode;
+                default:
+                    throw new Exception("Expected constant or variable, got " + GetTokenType());
+            }
+        }
+
+        private Node GetParenthesesNode()
+        {
+            VerifyToken(Token.OpeningParanthesis, GetTokenType());
+            ConsumeTokens(1);
+            ParenNode parenNode = new ParenNode();
+            Node innerNode = GetExpr();
+            VerifyToken(Token.ClosingParenthesis, GetTokenType());
+            ConsumeTokens(1);
+            parenNode.InnerNode = innerNode;
+            return parenNode;
         }
 
         private void AddNode(Node node)
@@ -88,6 +170,8 @@ namespace Calculator
         private object GetValue(int peekLength) => tokens[tokenIndex + peekLength].Value;
 
         private void ConsumeTokens(int count) => tokenIndex += count;
+
+        private int GetRemainingTokenCount() => tokens.Count - tokenIndex;
 
         private void VerifyToken(Token expected, Token actual)
         {
@@ -137,7 +221,7 @@ namespace Calculator
 
     class ParenNode : Node
     {
-        public Node InnerNode { get; }
+        public Node InnerNode { get; set; }
 
         public override int GetValue() => InnerNode.GetValue();
     }
