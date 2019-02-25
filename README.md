@@ -9,7 +9,7 @@ I personally used VS2017 version 15.9.3, but older versions of VS2017 will likel
 
 ## Usage
 
-When run, the calculator will ask you for input and solve given expressions. The grammar used it as follows:
+When run, the calculator will ask you for input and solve given expressions. The following grammar is used:
 
 
     <expression> ::= <term>
