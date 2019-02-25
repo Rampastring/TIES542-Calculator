@@ -17,7 +17,10 @@ namespace Calculator
             env = new Env();
         }
 
-        public Node StartNode;
+        /// <summary>
+        /// The start node of the generated syntax tree.
+        /// </summary>
+        public Node StartNode { get; private set; }
 
         private List<TokenInfo> tokens;
         private int tokenIndex;
@@ -27,10 +30,12 @@ namespace Calculator
         {
             env.Clear();
             tokenIndex = 0;
-            Lexer l = new Lexer();
-            l.Handle(str);
-            tokens = l.GetTokens();
+            var lexer = new Lexer();
+            lexer.Handle(str);
+            tokens = lexer.GetTokens();
             StartNode = GetExpr();
+            if (GetRemainingTokenCount() > 0)
+                throw new ASTException("Expected end of input, got " + GetTokenType());
         }
 
         private Node GetExpr()
@@ -40,38 +45,34 @@ namespace Calculator
                 case Token.Let:
                     VerifyToken(Token.Variable, GetTokenType(1));
                     VerifyToken(Token.EqualitySign, GetTokenType(2));
-                    LetNode letNode = new LetNode(env, (string)tokens[tokenIndex + 1].Value);
+                    var letNode = new LetNode(env, (string)GetValue(1));
                     ConsumeTokens(3);
                     letNode.VariableValueNode = GetExpr();
                     VerifyToken(Token.In, GetTokenType());
                     ConsumeTokens(1);
                     letNode.In = GetExpr();
                     return letNode;
-                case Token.Constant:
-                case Token.Variable:
-                case Token.OpeningParanthesis:
-                    return GetArith();
                 default:
-                    throw new ASTException("Expected let, constant, variable or opening parentheses, got " + GetTokenType());
+                    return GetTerm();
             }
         }
 
-        private Node GetArith()
+        private Node GetTerm()
         {
-            Node left = GetSubArith();
+            Node left = GetFactor();
 
             if (GetRemainingTokenCount() == 0)
                 return left;
 
-            OperatorNode center;
+            OperatorNode operatorNode;
 
             switch (GetTokenType())
             {
                 case Token.Plus:
-                    center = new OperatorNode(Operator.Sum);
+                    operatorNode = new OperatorNode(Operator.Plus);
                     break;
                 case Token.Minus:
-                    center = new OperatorNode(Operator.Minus);
+                    operatorNode = new OperatorNode(Operator.Minus);
                     break;
                 case Token.In:
                 case Token.ClosingParenthesis:
@@ -81,127 +82,127 @@ namespace Calculator
             }
 
             ConsumeTokens(1);
-            center.Left = left;
-            center.Right = GetArith();
-            return center;
+
+            operatorNode.Left = left;
+            operatorNode.Right = GetTerm();
+            return operatorNode;
         }
 
-        private Node GetSubArith()
+        private Node GetFactor()
         {
-            Node left;
+            Node left = GetUnary();
 
             if (GetRemainingTokenCount() == 0)
-                throw new ASTException("Expected opening parenthesis, constant or variable, got end of input");
+                return left;
 
-            if (GetRemainingTokenCount() == 1)
-            {
-                return GetConstOrVariable();
-            }
+            OperatorNode operatorNode;
 
             switch (GetTokenType())
             {
-                case Token.OpeningParanthesis:
-                    left = GetParenthesesNode();
-                    if (GetRemainingTokenCount() == 0)
-                        return left;
-                    break;
-                case Token.Constant:
-                case Token.Variable:
-                    left = GetConstOrVariable();
-                    break;
-                default:
-                    throw new ASTException("Expected opening parenthesis, constant or variable, got " + GetTokenType());
-            }
-
-            OperatorNode center;
-
-            switch (GetTokenType())
-            {
-                case Token.Plus:
-                case Token.Minus:
-                    return left;
                 case Token.Star:
-                    center = new OperatorNode(Operator.Star);
+                    operatorNode = new OperatorNode(Operator.Star);
                     break;
                 case Token.Slash:
-                    center = new OperatorNode(Operator.Slash);
+                    operatorNode = new OperatorNode(Operator.Slash);
                     break;
-                case Token.In:
-                case Token.ClosingParenthesis:
-                    return left;
                 default:
-                    throw new ASTException("Expected operator, in or closing parenthesis, got " + GetTokenType());
+                    return left;
             }
 
             ConsumeTokens(1);
 
-            center.Left = left;
-            center.Right = GetSubArith();
-
-            return center;
+            operatorNode.Left = left;
+            operatorNode.Right = GetFactor();
+            return operatorNode;
         }
 
-        private Node GetConstOrVariable()
+        private Node GetUnary(bool reverse = false)
+        {
+            switch (GetTokenType())
+            {
+                case Token.Plus:
+                    ConsumeTokens(1);
+                    return GetUnary();
+                case Token.Minus:
+                    ConsumeTokens(1);
+                    return GetUnary(true);
+                default:
+                    PrimaryNode node = GetPrimary();
+                    node.Reversed = reverse;
+                    return node;
+            }
+        }
+
+        private PrimaryNode GetPrimary()
         {
             switch (GetTokenType())
             {
                 case Token.Constant:
-                    var cNode = new ConstantNode((double)GetValue());
+                    var constantNode = new ConstantNode((double)GetValue());
                     ConsumeTokens(1);
-                    return cNode;
+                    return constantNode;
                 case Token.Variable:
                     var varRefNode = new VariableReferenceNode(env, (string)GetValue());
                     ConsumeTokens(1);
                     return varRefNode;
+                case Token.OpeningParanthesis:
+                    var parenNode = new ParenNode();
+                    ConsumeTokens(1);
+                    parenNode.InnerNode = GetExpr();
+                    VerifyToken(Token.ClosingParenthesis, GetTokenType());
+                    ConsumeTokens(1);
+                    return parenNode;
                 default:
-                    throw new ASTException("Expected constant or variable, got " + GetTokenType());
+                    throw new ASTException("Expected constant, variable or opening parenthesis, got " + GetTokenType());
             }
         }
 
-        private Node GetParenthesesNode()
-        {
-            VerifyToken(Token.OpeningParanthesis, GetTokenType());
-            ConsumeTokens(1);
-            ParenNode parenNode = new ParenNode();
-            Node innerNode = GetExpr();
-            VerifyToken(Token.ClosingParenthesis, GetTokenType());
-            ConsumeTokens(1);
-            parenNode.InnerNode = innerNode;
-            return parenNode;
-        }
-
         /// <summary>
-        /// Gets the type of the next token.
-        /// </summary>
-        /// <returns></returns>
-        private Token GetTokenType() => tokens[tokenIndex].Token;
-
-        /// <summary>
-        /// Peeks the type of an upcoming token.
+        /// Gets the type of the current or an upcoming token.
         /// </summary>
         /// <param name="peekLength">How far to peek the token from the current index.</param>
-        private Token GetTokenType(int peekLength) => tokens[tokenIndex + peekLength].Token;
+        private Token GetTokenType(int peekLength = 0) => tokens[tokenIndex + peekLength].Token;
 
-        private object GetValue() => tokens[tokenIndex].Value;
+        /// <summary>
+        /// Gets the value of the current or an upcoming token.
+        /// </summary>
+        /// <param name="peekLength">How far to peek the token from the current index.</param>
+        private object GetValue(int peekLength = 0) => tokens[tokenIndex + peekLength].Value;
 
-        private object GetValue(int peekLength) => tokens[tokenIndex + peekLength].Value;
-
+        /// <summary>
+        /// Consumes a given number of tokens.
+        /// </summary>
+        /// <param name="count">How many tokens to consume.</param>
         private void ConsumeTokens(int count) => tokenIndex += count;
 
+        /// <summary>
+        /// Calculates and returns the number of tokens that haven't been handled by the parser yet.
+        /// </summary>
         private int GetRemainingTokenCount() => tokens.Count - tokenIndex;
 
+        /// <summary>
+        /// Verifies that a token matches the expected token.
+        /// Throws an <see cref="ASTException"/> if the tokens don't match.
+        /// </summary>
+        /// <param name="expected">The expected token.</param>
+        /// <param name="actual">The token to compare to the expected token.</param>
         private void VerifyToken(Token expected, Token actual)
         {
             if (expected != actual)
-                throw new ASTException($"expected {expected}, got {actual}");
+                throw new ASTException($"Expected {expected}, got {actual}");
         }
     }
 
-    class Node
+
+    /******************************/
+    /** Syntax Tree Node Classes **/
+    /******************************/
+
+    abstract class Node
     {
         public Node() { }
 
-        public virtual double GetValue() { throw new NotImplementedException(); }
+        public abstract double GetValue();
     }
 
     class LetNode : Node
@@ -228,7 +229,19 @@ namespace Calculator
         }
     }
 
-    class ConstantNode : Node
+    abstract class PrimaryNode : Node
+    {
+        public bool Reversed { get; set; }
+    }
+
+    class ParenNode : PrimaryNode
+    {
+        public Node InnerNode { get; set; }
+
+        public override double GetValue() => Reversed ? -InnerNode.GetValue() : InnerNode.GetValue();
+    }
+
+    class ConstantNode : PrimaryNode
     {
         public ConstantNode(double value)
         {
@@ -237,17 +250,10 @@ namespace Calculator
 
         private double Value { get; }
 
-        public override double GetValue() => Value;
+        public override double GetValue() => Reversed ? -Value : Value;
     }
 
-    class ParenNode : Node
-    {
-        public Node InnerNode { get; set; }
-
-        public override double GetValue() => InnerNode.GetValue();
-    }
-
-    class VariableReferenceNode : Node
+    class VariableReferenceNode : PrimaryNode
     {
         public VariableReferenceNode(Env env, string variableName)
         {
@@ -258,7 +264,7 @@ namespace Calculator
         private Env env;
         private string VariableName { get; }
 
-        public override double GetValue() => env.GetValue(VariableName);
+        public override double GetValue() => Reversed ? -env.GetValue(VariableName) : env.GetValue(VariableName);
     }
 
     class OperatorNode : Node
@@ -277,7 +283,7 @@ namespace Calculator
         {
             switch (op)
             {
-                case Operator.Sum:
+                case Operator.Plus:
                     return Left.GetValue() + Right.GetValue();
                 case Operator.Minus:
                     return Left.GetValue() - Right.GetValue();
