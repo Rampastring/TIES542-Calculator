@@ -31,4 +31,14 @@ When run, the calculator will ask you for input and solve given expressions. The
                            | <variable name>
                            | ( <expression> )
 
-(Source of the grammar for people living in Finland: https://tim.jyu.fi/view/kurssit/tie/okp/2017/content_notes/The-anatomy-of-a-programming-language)
+Some example inputs:
+
+    (2+3)*4
+
+    let x = let x = (2* ((2+3)*4)) in 2*x in 2+x
+
+	let x = 2*2 in let y = 3*2 in x*y
+
+	let zyx = 2 + 2 in 2*3*4*5+6+7+8*9
+
+Source of the grammar (accessible only to people living in Finland): https://tim.jyu.fi/view/kurssit/tie/okp/2017/content_notes/The-anatomy-of-a-programming-language
