@@ -1,11 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace Calculator
 {
+    /// <summary>
+    /// The possible token types.
+    /// </summary>
     public enum Token
     {
         Plus,
@@ -21,6 +25,9 @@ namespace Calculator
         EqualitySign
     }
 
+    /// <summary>
+    /// Stores a token's type and its possible value.
+    /// </summary>
     public struct TokenInfo
     {
         public TokenInfo(Token token, object value = null)
@@ -38,9 +45,12 @@ namespace Calculator
         }
     }
 
+    /// <summary>
+    /// The lexer. Takes a string and converts it into a list of tokens.
+    /// </summary>
     class Lexer
     {
-        private List<TokenInfo> tokens;
+        private List<TokenInfo> tokens = new List<TokenInfo>();
 
         private int position;
 
@@ -49,11 +59,10 @@ namespace Calculator
         public List<TokenInfo> GetTokens() => new List<TokenInfo>(tokens);
 
 
-
         public void Handle(string input)
         {
             this.input = input ?? throw new ArgumentNullException("input");
-            tokens = new List<TokenInfo>();
+            tokens.Clear();
             position = 0;
 
             while (true)
@@ -68,7 +77,7 @@ namespace Calculator
             }
         }
 
-        private bool IsWhitespace(char c) => c == ' ' || c == '\n' || c == '\r';
+        private bool IsWhitespace(char c) => char.IsWhiteSpace(c);
 
         private void SkipWhitespace()
         {
@@ -81,18 +90,73 @@ namespace Calculator
             }
         }
         
-        private int FindIdentifierOrVariableEndIndex()
+        /// <summary>
+        /// Finds the index in the input string where the identifier
+        /// or constant that begins in the current position ends.
+        /// </summary>
+        private int FindIdentifierOrConstantEndIndex()
         {
             int index = position;
+            char c = input[index];
+            bool isConstant = char.IsDigit(c) || c == '.';
+            if (isConstant)
+                return FindConstantEndIndex();
+
             while (true)
             {
-                if (input.Length == index || IsWhitespace(input[index]))
+                if (input.Length == index)
                     return index;
+
+                c = input[index];
+
+                if (IsWhitespace(c) || !char.IsLetterOrDigit(c))
+                    return index;
+
                 index++;
             }
         }
 
+        /// <summary>
+        /// Finds the index in the input string where the
+        /// constant that begins in the current position ends.
+        /// </summary>
+        private int FindConstantEndIndex()
+        {
+            int index = position;
+            bool dotFound = false;
 
+            while (true)
+            {
+                if (input.Length == index)
+                    return index;
+
+                char c = input[index];
+
+                if (IsWhitespace(c))
+                    return index;
+
+                if (!char.IsDigit(c))
+                {
+                    if (!dotFound && c == '.')
+                    {
+                        dotFound = true;
+                        index++;
+                        continue;
+                    }
+
+                    return index;
+                }
+
+                index++;
+            }
+        }
+
+        /// <summary>
+        /// Gets the next token.
+        /// </summary>
+        /// <param name="value">The value of the token.</param>
+        /// <returns>The type of the token. 
+        /// Its possible value is stored in the <paramref name="value"/> parameter.</returns>
         private Token GetNextToken(out object value)
         {
             char c = input[position];
@@ -135,11 +199,11 @@ namespace Calculator
                         return Token.In;
                     }
 
-                    int endIndex = FindIdentifierOrVariableEndIndex();
+                    int endIndex = FindIdentifierOrConstantEndIndex();
                     int charCount = endIndex - position;
                     string sub = input.Substring(position, charCount);
                     position += charCount;
-                    if (int.TryParse(sub, out int result))
+                    if (double.TryParse(sub, out double result))
                     {
                         value = result;
                         return Token.Constant;
